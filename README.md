@@ -1,180 +1,85 @@
 # Lookwider
 
-CLI для CTF-задач со скрытыми строками изображения: меняет размеры **в бинарном
-заголовке**, сохраняя пиксельные/сжатые данные. Обычный resize в графическом
-редакторе растягивает видимую картинку и не решает эту задачу.
+[English](README.md) | [Русский](README.ru.md)
 
-Python **3.9+**, только стандартная библиотека. Работает на Linux, macOS и Windows.
-Формат определяется по сигнатуре, расширение файла может быть любым.
+CTF tool for revealing image data hidden by modified dimensions.
+Patches PNG, BMP and JPEG headers without re-encoding pixel data.
 
-## Быстрый старт на Linux
+**Python 3.9+ · No runtime dependencies**
 
-После распаковки проекта можно сразу запускать без установки и без сети:
+## Install
 
-```bash
-python3 lookwider.py inspect task.png
-python3 lookwider.py recover task.png -o revealed.png
-```
-
-Для установки команды `lookwider` в отдельное окружение (Debian/Ubuntu):
+From the project directory, with pipx installed:
 
 ```bash
-sudo apt update
-sudo apt install python3 python3-venv pipx
-pipx ensurepath
 pipx install .
 ```
 
-После `ensurepath` может потребоваться открыть новый терминал. Команды ниже
-используют установленный `lookwider`; без установки заменяйте его на
-`python3 lookwider.py`.
-
-Альтернатива через venv:
+Or run directly without installing:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install .
-.venv/bin/lookwider --help
+python3 lookwider.py --help
 ```
 
-При установке исходников pip может загрузить setuptools. Для полностью офлайн
-запуска используйте файл `lookwider.py`; зависимости ему не нужны. Готовый wheel
-из `dist/` также устанавливается без зависимостей:
+## Usage
 
 ```bash
-pipx install ./dist/ctf_lookwider-1.0.0-py3-none-any.whl --pip-args=--no-index
-```
-
-## Команды
-
-### Проверить файл
-
-```bash
+# Inspect the header and estimate the full height
 lookwider inspect task.png
-lookwider inspect task.png --json
-```
 
-Показывает реальные размеры из заголовка, свойства формата, несовпадения CRC PNG,
-данные после IEND и кандидат на полную высоту. Если автоматический расчёт
-невозможен, сообщает причину. `inspect` ничего не записывает; отсутствие
-кандидата в диагностике не считается ошибкой выполнения.
-
-### Восстановить высоту автоматически
-
-```bash
+# Recover PNG/BMP height automatically
 lookwider recover task.png -o revealed.png
-lookwider recover task.bmp -o revealed.bmp
-```
 
-Без `-o` результат сохраняется рядом: `task.recovered.png` / `.bmp`.
+# Set height and/or width manually
+lookwider set task.jpg --height 1024 -o revealed.jpg
+lookwider set task.png --width 512 --height 1024 -o revealed.png
 
-Для PNG объединяет IDAT, распаковывает zlib, вычисляет длину строки с учётом
-каналов и битовой глубины, проверяет делимость и filter bytes. Затем меняет
-IHDR height и пересчитывает его CRC32. **IDAT не перекодируется.**
-
-Для BMP учитывает выравнивание строк до 4 байт, сохраняет знак высоты
-(top-down/bottom-up), обновляет `bfSize` и `biSizeImage`. У BMP с положительной
-высотой скрытая область может открыться сверху: строки хранятся снизу вверх.
-
-Если изменена ещё и ширина, её можно задать явно:
-
-```bash
-lookwider inspect broken.png --width 512
-lookwider recover broken.png --width 512 -o revealed.png
-```
-
-### Задать размеры вручную
-
-```bash
-lookwider set task.png --height 1024 -o revealed.png
-lookwider set task.jpg --height 1024 --width 512 -o revealed.jpg
-```
-
-Можно менять только ширину или только высоту. Без размеров `set` для PNG
-исправляет CRC IHDR, сохраняя текущие размеры:
-
-```bash
-lookwider set bad-crc.png -o fixed-crc.png
-```
-
-Для JPEG меняются поля SOF (в том числе в progressive JPEG), метаданные и
-закодированные сканы сохраняются. CRC заголовка, аналогичного PNG, здесь нет.
-
-### Перебрать высоты
-
-```bash
+# Generate height candidates: START:STOP:STEP (inclusive)
 lookwider sweep task.jpg --heights 600:1200:100 -d variants
-lookwider sweep task.png --width 512 --heights 600:1200:100 -d variants
+
+# Fix PNG IHDR CRC without changing dimensions
+lookwider set bad-crc.png -o fixed.png
 ```
 
-Диапазон `START:STOP:STEP`, верхняя граница включается, если попадает в шаг.
-Создаёт `variants/task_512x600.jpg`, `task_512x700.jpg` и т. д. До 256 файлов за
-запуск. Откройте результаты в просмотрщике и выберите вариант с полной скрытой
-областью. Декодирование и оценка QR-кодов в CLI не входят.
+Use `python3 lookwider.py` instead of `lookwider` when running without installation.
+`inspect --json` produces a JSON report. `--force` overwrites existing outputs;
+the input file is always protected. `--max-mib` sets the input/inflation limit
+(default: 256 MiB each).
 
-## Пример из запроса
+## Example
 
-`bigdawg-1.jpg` — настоящий **progressive JPEG, 512×516**, а не PNG с неверным
-расширением. Рабочая команда:
+The sample JPEG declares **512×516** pixels. Increasing its height reveals a QR code:
 
 ```bash
-lookwider set bigdawg-1.jpg --height 1024 -o bigdawg-recovered.jpg
+lookwider set docs/images/bigdawg-before.jpg --height 1024 -o revealed.jpg
 ```
 
-В результате под фотографией открывается QR-код. В `examples/` сохранены
-`bigdawg-recovered.jpg`, PNG-превью и обзор нескольких высот. Значение 1024
-проверено визуально; программа не утверждает, что это точная первоначальная
-высота. Файл во вложении не изменён. Содержимое QR не открывалось.
+| Before: 512×516 | After: 512×1024 |
+| --- | --- |
+| <img src="docs/images/bigdawg-before.jpg" width="256" alt="Original image with the QR code hidden below the visible area"> | <img src="docs/images/bigdawg-after.png" width="256" alt="Recovered image showing the QR code below the photo"> |
 
-## Ограничения
+Only two SOF height bytes change; the JPEG stays **182,090 bytes**.
+The result above is a PNG preview.
 
-| Формат | Автовысота | Ручное изменение |
+## Support
+
+| Format | Automatic height | Manual dimensions |
 | --- | --- | --- |
-| PNG без interlace | Да, по IDAT и заданной ширине | Да, с CRC IHDR |
-| PNG Adam7 | Нет | Да; корректный размер нужно подобрать |
-| APNG | Только диагностика | Не поддерживается |
-| BMP CORE / INFO / V2 / V3 / V4 / V5 | Кандидат для BI_RGB / BI_BITFIELDS / BI_ALPHABITFIELDS | Да, если хватает пиксельных байтов |
-| BMP со сжатием RLE/JPEG/PNG | Нет | Не поддерживается |
-| JPEG с SOF до первого SOS | Нет | Да; результат зависит от оставшихся сканов |
+| PNG, non-interlaced | Yes, from IDAT rows | Yes, with IHDR CRC repair |
+| PNG, Adam7 | No | Yes |
+| Uncompressed / bitfield BMP | Candidate from available pixel bytes | Yes |
+| JPEG, including progressive | No | Yes, or use `sweep` |
 
-- У PNG проверка длины и фильтров подтверждает структуру строк при заданной
-  ширине, но не гарантирует наличие флага. Не исправляет повреждённый zlib.
-- У BMP произвольный хвост, кратный длине строки, неотличим от добавленных
-  пикселей только по длине. Автовысота — **кандидат**, который нужно посмотреть.
-  Профиль цвета V5 после пикселей исключается из расчёта.
-- У JPEG увеличение SOF может открыть сохранённые блоки, как в примере, но
-  избыточный размер может привести к серым областям или ошибке декодера.
-  DNL с нулевой высотой и несколько SOF до SOS не поддерживаются.
-- Размеры не создают отсутствующие данные. Файл, который уже обрезали и
-  пересохранили обычным редактором, этим способом восстановить нельзя.
-- Данные после PNG IEND или после zlib-потока не считаются дополнительными
-  строками. Они сохраняются, но требуют отдельного анализа.
-- PNG: несовпадение CRC не блокирует чтение; исправляется только IHDR CRC.
-  Другие повреждённые chunks показываются в диагностике.
-- По умолчанию чтение файла и распаковка IDAT ограничены 256 MiB каждая.
-  Лимит можно изменить `--max-mib 512` у соответствующей команды.
+APNG and compressed BMP are not supported for editing. BMP trailing data may
+look like extra rows; inspect the result. Oversized JPEG dimensions may cause
+decoding artifacts. Recovery requires the hidden data to still exist in the file.
 
-Результат всегда пишется отдельно. Существующий файл не перезаписывается без
-`--force`; исходник запрещено перезаписывать даже с этим флагом. Родительская
-папка для `-o` должна существовать, папка для `sweep -d` создаётся автоматически.
-Коды завершения: `0` — успех, `1` — ошибка файла/формата, `2` — ошибка аргументов.
-
-## Проверка и сборка
+## Tests
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m pip wheel . --no-deps -w dist
 ```
 
-Тесты генерируют PNG/BMP/JPEG-заголовки локально: дополнительные файлы и пакеты
-не нужны. Проверяют восстановление строк, CRC, split IDAT, битовые глубины,
-порядок BMP-строк, профиль V5, ограничения распаковки, некорректные файлы,
-изменение SOF и защиту исходника. Реальный JPEG из запроса дополнительно
-декодирован Pillow и проверен визуально; Pillow не является зависимостью CLI.
+## License
 
-Справка по структуре форматов:
-[PNG Specification](https://www.w3.org/TR/png-3/),
-[BITMAPINFOHEADER](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader).
-
-Лицензия MIT; изображения в `examples/` — материалы примера пользователя,
-лицензия на исходный код не распространяется на них.
+[MIT](LICENSE). Sample images are user-provided and are not covered by the code license.
