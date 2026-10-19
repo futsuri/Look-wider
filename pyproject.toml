@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctf-lookwider"
+version = "1.0.0"
+description = "Recover hidden image rows by repairing PNG, BMP and JPEG dimensions"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = []
+
+[project.scripts]
+lookwider = "lookwider:main"
+
+[tool.setuptools]
+py-modules = ["lookwider"]
